@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Piscinas por cada 100 habitantes – Ciudad Real</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f7f9fb; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0 0 12px; color: #0f172a; font-size: 22px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .search { flex:1 1 280px; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; }
+  .search input { border:none; outline:none; background:transparent; width:100%; font-size:14px; }
+  .legend { font-size:12px; color:#475569; }
+  .chip { display:inline-block; border:1px solid #cbd5e1; color:#334155; border-radius:9999px; padding:3px 8px; font-size:12px; margin-left:6px; }
+  .table-wrap { max-height: 70vh; overflow:auto; border:1px solid #cbd5e1; border-radius:10px; background:#fff; }
+  table { width:100%; border-collapse:collapse; }
+  thead th { position: sticky; top: 0; background:#0f172a; color:#e2e8f0; text-align:left; font-weight:600; font-size:13px; padding:10px; border-bottom:1px solid #334155; cursor:pointer; user-select:none; }
+  thead th .sort { margin-left:6px; opacity:.8; }
+  tbody td { padding:10px; font-size:14px; border-bottom:1px solid #e2e8f0; }
+  tbody tr:hover { background:#f1f5f9; }
+  .badge { display:inline-block; padding:4px 8px; border-radius:9999px; background:linear-gradient(90deg,#22d3ee,#818cf8); color:#0f172a; font-weight:700; font-variant-numeric:tabular-nums; }
+  .hide-sm { display:table-cell; }
+  @media (max-width:640px){ .hide-sm{ display:none; } thead th, tbody td { font-size:13px; padding:8px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Piscinas por cada 100 habitantes – Provincia de Ciudad Real</h1>
+  <div class="toolbar">
+    <div class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 21l-4.35-4.35m1.6-5.65a7 7 0 11-14 0 7 7 0 0114 0z" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <input id="q" type="text" placeholder="Buscar municipio… (p. ej., Valdepeñas)" aria-label="Buscar municipio">
+    </div>
+    <div class="legend">Click en los encabezados para ordenar <span class="chip">asc/desc</span></div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="tabla">
+      <thead>
+        <tr>
+          <th data-key="municipio">Municipio <span class="sort">↕</span></th>
+          <th class="hide-sm" data-key="piscinas">Piscinas <span class="sort">↕</span></th>
+          <th class="hide-sm" data-key="habitantes">Habitantes <span class="sort">↕</span></th>
+          <th data-key="ratio">Piscinas / 100 hab. <span class="sort">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <!-- filas -->
+      </tbody>
+    </table>
+  </div>
+  <p class="legend" style="margin-top:10px">Fuente: data.csv. Cálculo: (piscinas / habitantes) × 100 (dos decimales). Los números se muestran con formato español.</p>
+</div>
+
+<script>
+function toNumber(x){
+  if (x == null) return 0;
+  // CSV viene sin separadores; convertir por si acaso
+  return parseFloat(String(x).replace(/\./g,'').replace(',', '.')) || 0;
+}
+function fmt(n){ return new Intl.NumberFormat('es-ES').format(n); }
+function renderRows(arr){
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = arr.map(d => `
+    <tr>
+      <td>${d.municipio}</td>
+      <td class="hide-sm">${fmt(d.piscinas)}</td>
+      <td class="hide-sm">${fmt(d.habitantes)}</td>
+      <td><span class="badge">${d.ratio.toFixed(2)}</span></td>
+    </tr>
+  `).join('');
+}
+(async function(){
+  const res = await fetch('data.csv');
+  const text = await res.text();
+  const lines = text.trim().split(/\r?\n/);
+  const head = lines.shift().split(',').map(s=>s.trim().toLowerCase());
+  const idxM = head.indexOf('municipio');
+  const idxP = head.indexOf('piscinas');
+  const idxH = head.indexOf('habitantes');
+  let data = lines.map(row => {
+    const cols = row.split(',');
+    const municipio = cols[idxM].trim();
+    const piscinas = toNumber(cols[idxP]);
+    const habitantes = toNumber(cols[idxH]);
+    const ratio = habitantes>0 ? (piscinas/habitantes*100) : 0;
+    return {municipio, piscinas, habitantes, ratio};
+  });
+  // Orden inicial por ratio desc
+  data.sort((a,b)=>b.ratio - a.ratio);
+  renderRows(data);
+
+  // Buscador
+  const q = document.getElementById('q');
+  q.addEventListener('input', () => {
+    const s = q.value.trim().toLowerCase();
+    const filtered = data.filter(d => d.municipio.toLowerCase().includes(s));
+    renderRows(filtered);
+  });
+
+  // Ordenación por encabezados
+  const headers = document.querySelectorAll('#tabla thead th');
+  let state = {key:'ratio', asc:false};
+  headers.forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-key');
+      if(!key) return;
+      state.asc = state.key===key ? !state.asc : true;
+      state.key = key;
+      const sorted = data.slice().sort((a,b)=>{
+        const va = a[key], vb = b[key];
+        if (typeof va === 'number' && typeof vb === 'number') return state.asc ? va - vb : vb - va;
+        return state.asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+      });
+      renderRows(sorted);
+      // indicador
+      headers.forEach(h=>h.querySelector('.sort').textContent='↕');
+      th.querySelector('.sort').textContent = state.asc ? '↑' : '↓';
+    });
+  });
+})();
+</script>
+</body>
+</html>
